@@ -11,6 +11,7 @@
 
 import type { Grievance, TimelineEvent } from "@/types/grievance";
 
+import { remember } from "./mubit";
 import { upsertGrievance } from "./store";
 
 const SEEDED_USER_ID = "demo-seed";
@@ -36,6 +37,8 @@ const PARKING_FINE_ESCALATED: Grievance = (() => {
     { daysAgo: 21, kind: "reply_received", summary: "ParkingEye rejected appeal — no acknowledgement of signage challenge" },
     { daysAgo: 20, kind: "negotiating", summary: "Agent decided rejection lacked substance; proceeding to POPLA" },
     { daysAgo: 18, kind: "escalated", summary: "Filed POPLA appeal #POP-2026-118472 with photographic signage evidence" },
+    { daysAgo: 17, kind: "lesson_learned", summary: "Private parking appeals win faster when keeper-liability defects are cited before mitigation." },
+    { daysAgo: 17, kind: "lesson_learned", summary: "POPLA reverses ParkingEye PCNs in 7 of 10 cases when the BPA §18.3 signage minimum is challenged with photographic evidence." },
   ]);
   const now = new Date().toISOString();
   return {
@@ -81,7 +84,8 @@ const SUBSCRIPTION_WON: Grievance = (() => {
     { daysAgo: 30, kind: "negotiating", summary: "Sent escalation citing Section 50 CRA + CMA referral threat" },
     { daysAgo: 22, kind: "reply_received", summary: "PureGym confirmed full £127 refund to original card within 14 days" },
     { daysAgo: 8, kind: "won", summary: "Refund of £127.00 received — campaign closed", payload: { amountRecovered: 127 } },
-    { daysAgo: 8, kind: "lesson_learned", summary: "Lesson: PureGym pays out within 14 days when CMA referral is mentioned" },
+    { daysAgo: 8, kind: "lesson_learned", summary: "PureGym pays out within 14 days when a CMA referral is named explicitly in the second letter." },
+    { daysAgo: 8, kind: "lesson_learned", summary: "Subscription disputes need a dated cancellation trail before card-chargeback escalation succeeds." },
   ]);
   const now = new Date().toISOString();
   return {
@@ -123,6 +127,7 @@ const TRAIN_DELAY_AWAITING_APPROVAL: Grievance = (() => {
     { daysAgo: 0, kind: "researched", summary: "Confirmed 50% Delay Repay band (30–59 min) on £127.50 Anytime fare" },
     { daysAgo: 0, kind: "drafted", summary: "Drafted Delay Repay claim for £63.75 — awaiting user approval" },
     { daysAgo: 0, kind: "approval_requested", summary: "Approval card sent via Telegram" },
+    { daysAgo: 0, kind: "lesson_learned", summary: "Avanti Delay Repay rejections are reliably overturned when the original NRT rule is quoted alongside the Anytime fare reference." },
   ]);
   const now = new Date().toISOString();
   return {
@@ -167,8 +172,30 @@ export async function loadSeededCampaigns(): Promise<Grievance[]> {
 
 /**
  * Idempotent seeder. Run from boot (and from a /api/demo/seed admin route)
- * so the dashboard always has the multi-vertical backdrop.
+ * so the dashboard always has the multi-vertical backdrop AND Mubit has
+ * real lesson material to surface from the very first session.
+ *
+ * Mubit writes are wrapped in try/catch upstream so any outage just logs a
+ * warning — KV seeding always succeeds.
  */
 export async function ensureSeededCampaignsInKv(): Promise<void> {
   await Promise.all(SEEDED.map((g) => upsertGrievance(g)));
+
+  // Mirror every lesson_learned timeline event into Mubit memory under the
+  // grievance's session id so getContext() / surfaceStrategies() return real
+  // entries. Best-effort — Mubit failures don't block the seed.
+  await Promise.all(
+    SEEDED.flatMap((g) =>
+      g.timeline
+        .filter((e) => e.kind === "lesson_learned")
+        .map((e) =>
+          remember({
+            grievanceId: g.id,
+            kind: "outcome",
+            content: e.summary,
+            metadata: { vertical: g.category, seeded: true, company: g.facts.company },
+          }),
+        ),
+    ),
+  );
 }
