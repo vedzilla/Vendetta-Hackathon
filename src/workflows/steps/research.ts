@@ -7,8 +7,9 @@
  */
 
 import { DurableAgent } from "@workflow/ai/agent";
+import type { UIMessageChunk } from "ai";
 
-import { reasoningModel } from "@/lib/ai";
+import { REASONING_MODEL_ID } from "@/lib/ai";
 import { getBrightDataTools } from "@/lib/brightdata";
 import { remember } from "@/lib/mubit";
 import { researchSystemPrompt } from "@/lib/prompts";
@@ -65,26 +66,41 @@ export async function researchTargetStep(input: {
   const tools = await getBrightDataTools();
 
   const agent = new DurableAgent({
-    model: reasoningModel,
+    model: REASONING_MODEL_ID,
     instructions: `${researchSystemPrompt(grievance)}\n\n${RESEARCH_JSON_GUIDE}`,
     tools,
   });
 
-  const result = await agent.generate({
+  // We don't stream this step to a UI surface — the dashboard polls the
+  // grievance timeline instead. A no-op sink satisfies the required shape.
+  const sink = new WritableStream<UIMessageChunk>({ write() {} });
+
+  const result = await agent.stream({
     messages: [
       {
         role: "user",
         content: `Grievance description: "${grievance.rawDescription}"\nKnown facts: ${JSON.stringify(grievance.facts)}`,
       },
     ],
+    writable: sink,
   });
 
   const lastMessage = result.messages[result.messages.length - 1];
-  const textContent = Array.isArray(lastMessage.content)
-    ? lastMessage.content
-        .map((p) => (p.type === "text" ? p.text : ""))
-        .join("")
-    : String(lastMessage.content ?? "");
+  const rawContent: unknown = lastMessage?.content;
+  const textContent = typeof rawContent === "string"
+    ? rawContent
+    : Array.isArray(rawContent)
+      ? rawContent
+          .filter(
+            (p): p is { type: "text"; text: string } =>
+              !!p &&
+              typeof p === "object" &&
+              (p as { type?: unknown }).type === "text" &&
+              typeof (p as { text?: unknown }).text === "string",
+          )
+          .map((p) => p.text)
+          .join("")
+      : "";
 
   let parsed: Partial<GrievanceResearch>;
   try {
