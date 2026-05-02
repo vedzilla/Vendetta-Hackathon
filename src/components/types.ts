@@ -53,7 +53,11 @@ export const categoryLabels: Record<GrievanceCategory, string> = {
   TRAIN_DELAY: "Delay Repay",
 };
 
-const now = Date.now();
+// Anchor fallback timestamps to a fixed epoch so server and client hydration
+// produce byte-identical HTML (React error #418). Real campaigns have real
+// timestamps from KV; this only affects the empty-state fallback rendered
+// before the first /api/grievances response.
+const now = Date.parse("2026-05-02T12:00:00.000Z");
 const iso = (minutesAgo: number) => new Date(now - minutesAgo * 60_000).toISOString();
 
 const timeline = (events: Array<[number, TimelineEvent["kind"], string]>): TimelineEvent[] =>
