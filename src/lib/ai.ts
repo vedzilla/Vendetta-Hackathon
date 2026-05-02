@@ -13,8 +13,8 @@
 
 import { gateway } from "ai";
 
-export const REASONING_MODEL_ID = "anthropic/claude-opus-4-7" as const;
-export const FAST_MODEL_ID = "anthropic/claude-sonnet-4-6" as const;
+export const REASONING_MODEL_ID = "anthropic/claude-opus-4.7" as const;
+export const FAST_MODEL_ID = "anthropic/claude-sonnet-4.6" as const;
 
 export type AllowedModelId = typeof REASONING_MODEL_ID | typeof FAST_MODEL_ID;
 
