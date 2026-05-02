@@ -121,6 +121,14 @@ export function Dashboard({ initialDevPanelVisible }: { initialDevPanelVisible: 
     setMobileTab("detail");
   }
 
+  function handleDemoRun(grievanceId?: string) {
+    if (grievanceId) {
+      setSelectedId(grievanceId);
+      setMobileTab("detail");
+    }
+    void refreshList();
+  }
+
   return (
     <div className="min-h-screen bg-[#0F0E0C] pb-[60px] text-[var(--text-primary)]">
       <div className="md:hidden">
@@ -159,7 +167,7 @@ export function Dashboard({ initialDevPanelVisible }: { initialDevPanelVisible: 
       <DevPanel
         demoInFlight={demoInFlight}
         initialVisible={initialDevPanelVisible}
-        onRun={refreshList}
+        onRun={handleDemoRun}
       />
     </div>
   );

@@ -8,6 +8,10 @@ const scenarios = [
   { key: "escalation", label: "Escalation", seconds: 80 },
 ] as const;
 
+interface DemoRunResponse {
+  grievanceId?: string;
+}
+
 export function DevPanel({
   demoInFlight,
   initialVisible,
@@ -15,7 +19,7 @@ export function DevPanel({
 }: {
   demoInFlight: boolean;
   initialVisible: boolean;
-  onRun?: () => void;
+  onRun?: (grievanceId?: string) => void;
 }) {
   const [visible, setVisible] = useState(initialVisible);
   const [busy, setBusy] = useState(false);
@@ -31,13 +35,14 @@ export function DevPanel({
     setBusy(true);
     setLastRun(`${scenario} starting`);
     try {
-      await fetch("/api/demo/run", {
+      const response = await fetch("/api/demo/run", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ scenario }),
       });
+      const result = response.ok ? ((await response.json()) as DemoRunResponse) : {};
       setLastRun(`${scenario} sent`);
-      onRun?.();
+      onRun?.(result.grievanceId);
     } catch {
       setLastRun(`${scenario} failed`);
     } finally {
