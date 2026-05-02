@@ -238,15 +238,27 @@ function parseCallbackData(data: string): [string | undefined, string | undefine
 }
 
 export async function POST(req: Request) {
-  const parsed = telegramUpdateSchema.safeParse(await req.json());
-  if (!parsed.success) {
-    return NextResponse.json({ ok: false }, { status: 400 });
-  }
+  // Telegram disables a webhook after repeated non-2xx responses, so we
+  // always return 200 — internal errors are logged and surfaced via the
+  // chat reply, never propagated up.
+  try {
+    const parsed = telegramUpdateSchema.safeParse(await req.json());
+    if (!parsed.success) {
+      console.warn("[telegram] payload validation failed", parsed.error.issues);
+      return NextResponse.json({ ok: true, ignored: true });
+    }
 
-  if (parsed.data.callback_query) {
-    await handleCallback(req, parsed.data.callback_query);
-  } else if (parsed.data.message) {
-    await handleMessage(req, parsed.data.message);
+    if (parsed.data.callback_query) {
+      await handleCallback(req, parsed.data.callback_query).catch((e) =>
+        console.error("[telegram] callback handler crashed", e),
+      );
+    } else if (parsed.data.message) {
+      await handleMessage(req, parsed.data.message).catch((e) =>
+        console.error("[telegram] message handler crashed", e),
+      );
+    }
+  } catch (e) {
+    console.error("[telegram] webhook crashed", e);
   }
 
   return NextResponse.json({ ok: true });

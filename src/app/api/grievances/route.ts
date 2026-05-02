@@ -91,24 +91,34 @@ export async function POST(req: Request) {
   let workflowRunId: string | undefined;
   let simulationRunId: string | undefined;
   if (startsLive) {
-    const run = await start(pursueGrievance, [
-      { grievanceId: grievance.id, demoScale },
-    ]);
-    workflowRunId = run.runId;
-
-    if (demoMode) {
-      const simRun = await start(simulateReplies, [
-        {
-          grievanceId: grievance.id,
-          scenario,
-          demoScale,
-          autoApprove: true,
-        },
+    try {
+      const run = await start(pursueGrievance, [
+        { grievanceId: grievance.id, demoScale },
       ]);
-      simulationRunId = simRun.runId;
+      workflowRunId = run.runId;
+    } catch (e) {
+      console.error("[grievances] pursueGrievance.start failed", e);
     }
 
-    await setWorkflowRunIds(grievance.id, { workflowRunId, simulationRunId });
+    if (demoMode) {
+      try {
+        const simRun = await start(simulateReplies, [
+          {
+            grievanceId: grievance.id,
+            scenario,
+            demoScale,
+            autoApprove: true,
+          },
+        ]);
+        simulationRunId = simRun.runId;
+      } catch (e) {
+        console.error("[grievances] simulateReplies.start failed", e);
+      }
+    }
+
+    if (workflowRunId || simulationRunId) {
+      await setWorkflowRunIds(grievance.id, { workflowRunId, simulationRunId });
+    }
   }
 
   return NextResponse.json(
