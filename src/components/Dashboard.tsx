@@ -79,7 +79,7 @@ export function Dashboard({ initialDevPanelVisible }: { initialDevPanelVisible: 
 
     setCampaigns(data.campaigns);
     setSelectedId((current) => {
-      if (focusIdIsPresent) return focusId;
+      if (focusId && focusIdIsPresent) return focusId;
       if (focusId && current === focusId) return current;
       if (data.campaigns.some((campaign) => campaign.id === current)) return current;
       return data.campaigns[0]?.id ?? current;
