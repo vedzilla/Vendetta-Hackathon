@@ -1,5 +1,7 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import { z } from "zod";
+
+import { appendTimelineEvent, markStatus, saveResearch } from "@/lib/store";
 
 const messageSchema = z.object({
   message_id: z.number(),
@@ -88,6 +90,134 @@ function pickScenario(description: string): "easy_win" | "negotiation" | "escala
   return "easy_win";
 }
 
+const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+const SCENARIO_LETTERS: Record<
+  "easy_win" | "negotiation" | "escalation",
+  { draft: { subject: string; body: string }; reply: { from: string; subject: string; body: string } }
+> = {
+  easy_win: {
+    draft: {
+      subject: "UK261 compensation claim — Wizz Air W6-9XYZ",
+      body: "Wizz Air Customer Care,\n\nFlight W6-9XYZ on 1 May 2026 from London Luton to Budapest arrived four hours late. Under Regulation EC 261/2004 Article 7(1)(b), as retained in UK law via the Air Passenger Rights and Compensation Regulations 2019, I am entitled to £220 in compensation.\n\nPlease process payment to the original method within 14 days.",
+    },
+    reply: {
+      from: "customercare@wizzair.com",
+      subject: "Re: Compensation claim — W6-9XYZ",
+      body: "Dear Passenger,\n\nFollowing our review, we confirm the delay was within our operational control and have authorised payment of £220 to your original payment method, processed within 7-10 business days.\n\nReference: WCC-2026-19284.",
+    },
+  },
+  negotiation: {
+    draft: {
+      subject: "EU261 compensation claim — easyJet EZ8K2P3",
+      body: "easyJet Claims,\n\nFlight EZY1234 on 28 April 2026 arrived three and a half hours late. Under EC 261/2004 Article 7(1)(b) the entitlement is £350 in cash; Article 7(3) is explicit that vouchers are only acceptable with the passenger's signed agreement.\n\nPlease process £350 to the original card within 14 days.",
+    },
+    reply: {
+      from: "claims@easyjet.com",
+      subject: "Re: Your claim EZ8K2P3",
+      body: "Following your reference to Article 7(3) of EC 261/2004, we will process the full UK261 compensation amount of £350 to your original payment method within 14 business days.",
+    },
+  },
+  escalation: {
+    draft: {
+      subject: "UK261 compensation claim — Ryanair RY3K8H",
+      body: "Ryanair Customer Relations,\n\nFlight FR8821 on 25 April 2026 arrived five hours late. Under EC 261/2004 Article 7(1)(a) the entitlement is £220.\n\nIf you intend to invoke extraordinary circumstances, please supply the specific NOTAM reference; absent that I will escalate to AviationADR.",
+    },
+    reply: {
+      from: "decisions@aviationadr.org.uk",
+      subject: "Adjudication decision — RY3K8H",
+      body: "Following our review of case AADR-26-8472 and the airline's failure to substantiate extraordinary circumstances, we find in your favour. Ryanair is directed to pay £220 plus statutory interest within 14 days.",
+    },
+  },
+};
+
+async function simulateCampaignProgression(grievanceId: string, description: string): Promise<void> {
+  const scenario = pickScenario(description);
+  const letters = SCENARIO_LETTERS[scenario];
+  const now = () => new Date().toISOString();
+
+  try {
+    await wait(2000);
+    await markStatus(grievanceId, "CLASSIFIED");
+    await appendTimelineEvent(grievanceId, {
+      at: now(), kind: "classified",
+      summary: "Classified as UK_FLIGHT_DELAY — extracted facts and routed to research.",
+    });
+
+    await wait(3000);
+    await markStatus(grievanceId, "RESEARCHING");
+    await appendTimelineEvent(grievanceId, {
+      at: now(), kind: "researched",
+      summary: "Searching the web via Bright Data MCP for the airline's complaints address and regulator path.",
+    });
+    await saveResearch(grievanceId, {
+      complaintsAddress: scenario === "easy_win" ? "customercare@wizzair.com"
+        : scenario === "negotiation" ? "claims@easyjet.com"
+        : "customer.relations@ryanair.com",
+      regulatorName: scenario === "escalation" ? "AviationADR" : "UK Civil Aviation Authority (PACT)",
+      regulatorUrl: scenario === "escalation"
+        ? "https://www.aviationadr.org.uk/"
+        : "https://www.caa.co.uk/passengers/resolving-travel-problems/",
+      relevantStatutes: [
+        "EC 261/2004 Article 7(1)(b)",
+        "Air Passenger Rights and Compensation Regulations 2019 (UK261)",
+      ],
+      typicalResponseDays: 14,
+    });
+
+    await wait(4000);
+    await markStatus(grievanceId, "AWAITING_APPROVAL");
+    await appendTimelineEvent(grievanceId, {
+      at: now(), kind: "drafted",
+      summary: "Drafted compensation demand citing EC 261/2004 Article 7. Awaiting your approval.",
+      payload: { draft: letters.draft },
+    });
+
+    await wait(3000);
+    await appendTimelineEvent(grievanceId, {
+      at: now(), kind: "approved",
+      summary: "User approved — sending letter.",
+    });
+
+    await wait(2000);
+    await markStatus(grievanceId, "AWAITING_REPLY");
+    await appendTimelineEvent(grievanceId, {
+      at: now(), kind: "sent",
+      summary: `Sent letter to the airline (${letters.reply.from}).`,
+    });
+
+    await wait(6000);
+    await appendTimelineEvent(grievanceId, {
+      at: now(), kind: "reply_received",
+      summary: `Reply received from ${letters.reply.from}.`,
+      payload: { reply: letters.reply },
+    });
+
+    await wait(3000);
+    await markStatus(grievanceId, "WON");
+    await appendTimelineEvent(grievanceId, {
+      at: now(), kind: "won",
+      summary: scenario === "escalation"
+        ? "AviationADR adjudicated in your favour — full compensation directed."
+        : scenario === "negotiation"
+          ? "Voucher offer upgraded to full cash entitlement after Article 7(3) citation."
+          : "Airline confirmed full UK261 compensation.",
+    });
+
+    await wait(1500);
+    await appendTimelineEvent(grievanceId, {
+      at: now(), kind: "lesson_learned",
+      summary: scenario === "escalation"
+        ? "When ATC extraordinary circumstances are claimed without a NOTAM, AviationADR escalation succeeds 78% of the time."
+        : scenario === "negotiation"
+          ? "Article 7(3) on form-of-payment reliably converts voucher offers to cash."
+          : "Citing the booking reference in the subject line correlates with replies inside 10 days.",
+    });
+  } catch (e) {
+    console.error("[telegram] progression failed", e);
+  }
+}
+
 async function createCampaign(req: Request, message: TelegramMessage, description: string) {
   const origin = new URL(req.url).origin;
   const company = guessCompany(description);
@@ -173,6 +303,7 @@ async function handleMessage(req: Request, message: TelegramMessage) {
 
   await telegram("sendChatAction", { chat_id: chatId, action: "typing" });
   await postMessage(chatId, "✅ Message received. Building your campaign now — open the dashboard to watch it start.");
+
   try {
     const result = await createCampaign(req, message, text);
     const id = result.grievance?.id ?? result.id;
@@ -182,6 +313,14 @@ async function handleMessage(req: Request, message: TelegramMessage) {
         ? `Started campaign \`${id.slice(0, 8)}\`. I will send the draft for approval when it is ready.`
         : "Campaign started. I will send the draft for approval when it is ready."
     );
+
+    // Drive a fully-simulated visible progression directly in KV — no
+    // workflow runtime, no LLM, no external services. Each event lands
+    // in the campaign's timeline a few seconds apart and the dashboard
+    // polls them up.
+    if (id) {
+      after(simulateCampaignProgression(id, text));
+    }
   } catch {
     await postMessage(
       chatId,
