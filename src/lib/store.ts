@@ -172,16 +172,24 @@ export async function mergeFacts(
 
 /**
  * Idempotent upsert — used by the seed-on-boot script and the demo seeder.
- * Skips index updates if the id already exists so we don't double-count.
+ *
+ * INDEX_KEY/userIndexKey writes are unconditional: SADD is naturally idempotent
+ * and we want to self-heal indexes if a previous run wrote the doc but skipped
+ * the index (e.g. an earlier instrumentation race or a partial failure).
+ *
+ * The timeline LPUSH is guarded by isNew so re-running this never duplicates
+ * timeline events.
  */
 export async function upsertGrievance(grievance: Grievance): Promise<void> {
   const isNew = !(await kv.exists(grievanceKey(grievance.id)));
   await kv.set(grievanceKey(grievance.id), grievance);
+  await Promise.all([
+    kv.sadd(INDEX_KEY, grievance.id),
+    kv.sadd(userIndexKey(grievance.userId), grievance.id),
+  ]);
   if (isNew) {
-    await Promise.all([
-      kv.sadd(INDEX_KEY, grievance.id),
-      kv.sadd(userIndexKey(grievance.userId), grievance.id),
-      ...grievance.timeline.map((e) => kv.lpush(timelineKey(grievance.id), e)),
-    ]);
+    await Promise.all(
+      grievance.timeline.map((e) => kv.lpush(timelineKey(grievance.id), e)),
+    );
   }
 }
