@@ -33,6 +33,7 @@ async function progressStep(input: {
   status: GrievanceStatus;
   kind: TimelineEventKind;
   summary: string;
+  payload?: Record<string, unknown>;
 }): Promise<void> {
   "use step";
   await markStatus(input.grievanceId, input.status);
@@ -40,8 +41,24 @@ async function progressStep(input: {
     at: new Date().toISOString(),
     kind: input.kind,
     summary: input.summary,
+    payload: input.payload,
   });
 }
+
+const SCENARIO_DRAFT: Record<ScenarioKey, { subject: string; body: string }> = {
+  easy_win: {
+    subject: "UK261 compensation claim — Wizz Air W6-9XYZ — 1 May 2026",
+    body: "Wizz Air Customer Care,\n\nFlight W6-9XYZ on 1 May 2026 from London Luton to Budapest arrived four hours late.\n\nUnder Regulation EC 261/2004 Article 7(1)(b), as retained in UK law (Air Passenger Rights and Compensation Regulations 2019), I am entitled to £220 in compensation. The delay was within your operational control and no extraordinary circumstances apply.\n\nPlease process payment to the original payment method within 14 days. Booking reference is in the subject line.",
+  },
+  negotiation: {
+    subject: "EU261 compensation claim — easyJet EZ8K2P3 — 28 April 2026",
+    body: "easyJet Claims,\n\nFlight EZY1234 on 28 April 2026 from London Gatwick to Barcelona arrived three and a half hours late.\n\nUnder EC 261/2004 Article 7(1)(b) the entitlement is £350 in cash. Article 7(3) is explicit that vouchers are only acceptable with the passenger's signed agreement.\n\nPlease process £350 to the original payment card within 14 days. Booking reference: EZ8K2P3.",
+  },
+  escalation: {
+    subject: "UK261 compensation claim — Ryanair RY3K8H — 25 April 2026",
+    body: "Ryanair Customer Relations,\n\nFlight FR8821 on 25 April 2026 from London Stansted to Krakow arrived five hours late.\n\nUnder EC 261/2004 Article 7(1)(a), the entitlement is £220. If you intend to invoke the extraordinary-circumstances defence, please supply the specific NOTAM reference and ATC restriction documentation; absent that evidence I will escalate to AviationADR.\n\nPlease process payment within 14 days. Booking reference: RY3K8H.",
+  },
+};
 
 async function recordResearchStep(input: {
   grievanceId: string;
@@ -178,6 +195,7 @@ export async function simulateReplies(input: SimulateRepliesInput): Promise<void
     status: "AWAITING_APPROVAL",
     kind: "drafted",
     summary: `Drafted compensation demand citing EC 261/2004 Article 7. Awaiting your approval.`,
+    payload: { draft: SCENARIO_DRAFT[input.scenario] },
   });
 
   if (input.autoApprove) {
