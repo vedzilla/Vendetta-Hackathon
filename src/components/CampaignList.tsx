@@ -3,7 +3,7 @@
 import { CategoryBadge } from "./CategoryBadge";
 import { FastForwardIndicator } from "./FastForwardIndicator";
 import { StatusPill } from "./StatusPill";
-import type { DashboardCampaign } from "./types";
+import { displayCompany, type DashboardCampaign } from "./types";
 
 function formatRelative(iso: string) {
   const minutes = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60_000));
@@ -57,7 +57,7 @@ export function CampaignList({
                   ) : null}
                   <div className="pr-20">
                     <p className="serif text-lg leading-tight text-[var(--text-primary)]">
-                      {campaign.facts.company ?? "Unknown company"}
+                      {displayCompany(campaign)}
                     </p>
                     <p className="mono mt-1 text-xs text-[var(--text-muted)]">
                       {amount > 0 ? `${campaign.facts.currency ?? "GBP"} ${amount.toFixed(2)}` : campaign.id}

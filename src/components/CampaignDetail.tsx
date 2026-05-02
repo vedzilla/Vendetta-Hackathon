@@ -6,7 +6,7 @@ import { CategoryBadge } from "./CategoryBadge";
 import { FastForwardIndicator } from "./FastForwardIndicator";
 import { StatusPill } from "./StatusPill";
 import { TimelineView } from "./TimelineView";
-import type { DashboardCampaign } from "./types";
+import { displayCompany, type DashboardCampaign } from "./types";
 
 const tabs = ["Timeline", "Letters", "Research", "Trace"] as const;
 type Tab = (typeof tabs)[number];
@@ -59,7 +59,7 @@ export function CampaignDetail({
             </div>
             <div className="mt-4 flex items-center gap-3">
               <h2 className="serif text-4xl font-medium leading-none text-[var(--text-primary)] md:text-5xl">
-                {campaign.facts.company ?? "Unknown company"}
+                {displayCompany(campaign)}
               </h2>
               {showFastForward ? (
                 <span

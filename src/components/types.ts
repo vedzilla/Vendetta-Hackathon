@@ -53,6 +53,23 @@ export const categoryLabels: Record<GrievanceCategory, string> = {
   TRAIN_DELAY: "Delay Repay",
 };
 
+/**
+ * Best-effort title for a campaign. Prefers the LLM-extracted company name;
+ * falls back to a trimmed snippet of the user's original description so the
+ * dashboard never reads "Unknown company" while classification is still
+ * running.
+ */
+export function displayCompany(campaign: Pick<Grievance, "facts" | "rawDescription">): string {
+  const company = campaign.facts?.company;
+  if (typeof company === "string" && company.trim().length > 0) {
+    return company;
+  }
+  const desc = (campaign.rawDescription ?? "").trim();
+  if (!desc) return "New campaign";
+  const firstSentence = desc.split(/[.!?\n]/)[0]?.trim() ?? desc;
+  return firstSentence.length > 48 ? `${firstSentence.slice(0, 45).trim()}…` : firstSentence;
+}
+
 // Anchor fallback timestamps to a fixed epoch so server and client hydration
 // produce byte-identical HTML (React error #418). Real campaigns have real
 // timestamps from KV; this only affects the empty-state fallback rendered

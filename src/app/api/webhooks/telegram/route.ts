@@ -49,14 +49,48 @@ function isFollowUp(text: string) {
   return /\b(how|status|update|progress|case)\b/i.test(text);
 }
 
+// Companies that come up most often — a tiny pre-classifier so the dashboard
+// shows a real name within a second of the user hitting send, before the LLM
+// classification step has had time to run. The workflow's classifier will
+// still write the authoritative company name on top of this.
+const KNOWN_COMPANIES = [
+  "Wizz Air",
+  "easyJet",
+  "Ryanair",
+  "British Airways",
+  "Jet2",
+  "TUI",
+  "Avanti West Coast",
+  "ParkingEye",
+  "Euro Car Parks",
+  "PureGym",
+  "StreamBox",
+  "Netflix",
+  "Spotify",
+];
+
+function guessCompany(description: string): string | undefined {
+  const haystack = description.toLowerCase();
+  for (const name of KNOWN_COMPANIES) {
+    if (haystack.includes(name.toLowerCase())) return name;
+  }
+  // Loose phonetic catch — "wiz air" / "wizair" → "Wizz Air".
+  if (/\bwi(z|zz)\s*air\b/i.test(description)) return "Wizz Air";
+  if (/\beasy\s*jet\b/i.test(description)) return "easyJet";
+  if (/\brye\s*air\b/i.test(description)) return "Ryanair";
+  return undefined;
+}
+
 async function createCampaign(req: Request, message: TelegramMessage, description: string) {
   const origin = new URL(req.url).origin;
+  const company = guessCompany(description);
   const response = await fetch(`${origin}/api/grievances`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       description,
       notifyVia: { telegram: { chatId: String(message.chat.id) } },
+      ...(company ? { facts: { company } } : {}),
     }),
   });
   if (!response.ok) throw new Error(`create grievance failed: ${response.status}`);
@@ -125,7 +159,7 @@ async function handleMessage(req: Request, message: TelegramMessage) {
   }
 
   await telegram("sendChatAction", { chat_id: chatId, action: "typing" });
-  await postMessage(chatId, "On it. Building the campaign record now.");
+  await postMessage(chatId, "✅ Message received. Building your campaign now — open the dashboard to watch it start.");
   try {
     const result = await createCampaign(req, message, text);
     const id = result.grievance?.id ?? result.id;
