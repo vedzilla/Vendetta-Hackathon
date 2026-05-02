@@ -81,9 +81,19 @@ function guessCompany(description: string): string | undefined {
   return undefined;
 }
 
+function pickScenario(description: string): "easy_win" | "negotiation" | "escalation" {
+  const t = description.toLowerCase();
+  if (/extraordinary|atc|notam|ryanair|weather|refus/.test(t)) return "escalation";
+  if (/voucher|partial|goodwill|easyjet|small offer|low offer/.test(t)) return "negotiation";
+  return "easy_win";
+}
+
 async function createCampaign(req: Request, message: TelegramMessage, description: string) {
   const origin = new URL(req.url).origin;
   const company = guessCompany(description);
+  const demoMode = process.env.ENABLE_DEMO_MODE === "1";
+  const scenario = demoMode ? pickScenario(description) : undefined;
+
   const response = await fetch(`${origin}/api/grievances`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -91,6 +101,9 @@ async function createCampaign(req: Request, message: TelegramMessage, descriptio
       description,
       notifyVia: { telegram: { chatId: String(message.chat.id) } },
       ...(company ? { facts: { company } } : {}),
+      ...(demoMode
+        ? { metadata: { demoMode: true, scenario } }
+        : {}),
     }),
   });
   if (!response.ok) throw new Error(`create grievance failed: ${response.status}`);

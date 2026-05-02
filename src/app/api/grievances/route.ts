@@ -15,6 +15,7 @@ import { start } from "workflow/api";
 
 import { createGrievance, listGrievances, setWorkflowRunIds } from "@/lib/store";
 import { pursueGrievance } from "@/workflows/pursue-grievance";
+import { simulateReplies } from "@/workflows/simulate-replies";
 
 const NotifyViaSchema = z.object({
   telegram: z.object({ chatId: z.string() }).optional(),
@@ -80,22 +81,41 @@ export async function POST(req: Request) {
   const startsLive =
     grievance.category === "UK_FLIGHT_DELAY" && !grievance.metadata?.seeded;
 
+  // Demo path: scenarios run end-to-end with scaled sleeps and a synthetic
+  // airline reply, so a Telegram-driven flight grievance can complete in
+  // under 2 minutes on stage.
+  const demoMode = grievance.metadata?.demoMode === true;
+  const demoScale = parsed.data.demoScale ?? (demoMode ? 12_000 : 1);
+  const scenario = grievance.metadata?.scenario ?? "easy_win";
+
   let workflowRunId: string | undefined;
+  let simulationRunId: string | undefined;
   if (startsLive) {
     const run = await start(pursueGrievance, [
-      {
-        grievanceId: grievance.id,
-        demoScale: parsed.data.demoScale ?? 1,
-      },
+      { grievanceId: grievance.id, demoScale },
     ]);
     workflowRunId = run.runId;
-    await setWorkflowRunIds(grievance.id, { workflowRunId });
+
+    if (demoMode) {
+      const simRun = await start(simulateReplies, [
+        {
+          grievanceId: grievance.id,
+          scenario,
+          demoScale,
+          autoApprove: true,
+        },
+      ]);
+      simulationRunId = simRun.runId;
+    }
+
+    await setWorkflowRunIds(grievance.id, { workflowRunId, simulationRunId });
   }
 
   return NextResponse.json(
     {
       grievanceId: grievance.id,
       workflowRunId,
+      simulationRunId,
       status: grievance.status,
       category: grievance.category,
     },

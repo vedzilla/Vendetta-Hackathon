@@ -12,7 +12,7 @@
  * in production without the token, only Resend can post.
  */
 
-import { fetch } from "workflow";
+import { fetch, sleep } from "workflow";
 
 import { demoSleep } from "@/lib/demo-sleep";
 import { getScenario, type ScenarioKey } from "@/lib/demo-scenarios";
@@ -21,6 +21,29 @@ export interface SimulateRepliesInput {
   grievanceId: string;
   scenario: ScenarioKey;
   demoScale: number;
+  /** When true, also tap "approve" on the campaign so the demo runs end-to-end. */
+  autoApprove?: boolean;
+}
+
+async function autoApproveStep(grievanceId: string): Promise<void> {
+  "use step";
+
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? process.env.VERCEL_URL;
+  if (!baseUrl) {
+    throw new Error("simulate-replies: NEXT_PUBLIC_APP_URL or VERCEL_URL must be set");
+  }
+  const url = baseUrl.startsWith("http") ? baseUrl : `https://${baseUrl}`;
+  const res = await fetch(`${url}/api/grievances/${grievanceId}/approve`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action: "approve" }),
+  });
+  if (!res.ok) {
+    const detail = await res.text().catch(() => "");
+    throw new Error(
+      `simulate-replies: auto-approve failed ${res.status}: ${detail.slice(0, 200)}`,
+    );
+  }
 }
 
 async function postSimulatedReply(input: {
@@ -72,6 +95,12 @@ export async function simulateReplies(input: SimulateRepliesInput): Promise<void
   "use workflow";
 
   const script = getScenario(input.scenario);
+
+  if (input.autoApprove) {
+    // Wait long enough for pursueGrievance to reach the approval gate, then tap.
+    await sleep("8s");
+    await autoApproveStep(input.grievanceId);
+  }
 
   for (const beat of script.beats) {
     await demoSleep(beat.afterDelay, input.demoScale);
