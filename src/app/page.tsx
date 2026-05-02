@@ -1,4 +1,4 @@
-import { Dashboard } from "@/components/Dashboard";
+import { DashboardClient } from "@/components/DashboardClient";
 
 export default async function Home({
   searchParams,
@@ -6,5 +6,5 @@ export default async function Home({
   searchParams: Promise<{ dev?: string }>;
 }) {
   const params = await searchParams;
-  return <Dashboard initialDevPanelVisible={params.dev === "1"} />;
+  return <DashboardClient initialDevPanelVisible={params.dev === "1"} />;
 }
