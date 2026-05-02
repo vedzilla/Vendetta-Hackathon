@@ -60,23 +60,31 @@ export function Dashboard({ initialDevPanelVisible }: { initialDevPanelVisible: 
   const [campaigns, setCampaigns] = useState<DashboardCampaign[]>(fallbackCampaigns);
   const [lessons, setLessons] = useState<Lesson[]>(fallbackLessons);
   const [selectedId, setSelectedId] = useState(fallbackCampaigns[0]?.id);
+  const [pendingSelectedId, setPendingSelectedId] = useState<string>();
   const [mobileTab, setMobileTab] = useState<MobileTab>("detail");
 
   const selected = useMemo(
-    () => campaigns.find((campaign) => campaign.id === selectedId) ?? campaigns[0],
+    () => campaigns.find((campaign) => campaign.id === selectedId) ?? (selectedId ? undefined : campaigns[0]),
     [campaigns, selectedId]
   );
 
-  const refreshList = useCallback(async () => {
+  const refreshList = useCallback(async (preferredId?: string) => {
     const data = normalizeCampaignList(await getJson<CampaignListResponse | DashboardCampaign[]>("/api/grievances"));
     if (data === null) return;
 
+    const focusId = preferredId ?? pendingSelectedId;
+    const focusIdIsPresent = focusId
+      ? data.campaigns.some((campaign) => campaign.id === focusId)
+      : false;
+
     setCampaigns(data.campaigns);
-    setSelectedId((current) =>
-      data.campaigns.some((campaign) => campaign.id === current)
-        ? current
-        : data.campaigns[0]?.id
-    );
+    setSelectedId((current) => {
+      if (focusIdIsPresent) return focusId;
+      if (focusId && current === focusId) return current;
+      if (data.campaigns.some((campaign) => campaign.id === current)) return current;
+      return data.campaigns[0]?.id;
+    });
+    if (focusIdIsPresent) setPendingSelectedId(undefined);
 
     const derivedLessons = data.lessons.length > 0 ? data.lessons : lessonsFromCampaigns(data.campaigns);
     setLessons((current) => {
@@ -87,7 +95,7 @@ export function Dashboard({ initialDevPanelVisible }: { initialDevPanelVisible: 
     if (data.campaigns.length === 0) {
       setMobileTab("campaigns");
     }
-  }, []);
+  }, [pendingSelectedId]);
 
   const refreshSelected = useCallback(async () => {
     if (!selectedId) return;
@@ -123,10 +131,11 @@ export function Dashboard({ initialDevPanelVisible }: { initialDevPanelVisible: 
 
   function handleDemoRun(grievanceId?: string) {
     if (grievanceId) {
+      setPendingSelectedId(grievanceId);
       setSelectedId(grievanceId);
       setMobileTab("detail");
     }
-    void refreshList();
+    void refreshList(grievanceId);
   }
 
   return (
@@ -147,7 +156,7 @@ export function Dashboard({ initialDevPanelVisible }: { initialDevPanelVisible: 
           ))}
         </div>
         <div className={mobileTab === "campaigns" ? "block" : "hidden"}>
-          <CampaignList campaigns={campaigns} onSelect={selectCampaign} selectedId={selected?.id} />
+          <CampaignList campaigns={campaigns} onSelect={selectCampaign} selectedId={selectedId} />
         </div>
         <div className={mobileTab === "detail" ? "block" : "hidden"}>
           <CampaignDetail campaign={selected} onRefresh={refreshSelected} />
@@ -158,7 +167,7 @@ export function Dashboard({ initialDevPanelVisible }: { initialDevPanelVisible: 
       </div>
 
       <div className="hidden min-h-[calc(100vh-60px)] grid-cols-[320px_minmax(0,1fr)_320px] md:grid">
-        <CampaignList campaigns={campaigns} onSelect={selectCampaign} selectedId={selected?.id} />
+        <CampaignList campaigns={campaigns} onSelect={selectCampaign} selectedId={selectedId} />
         <CampaignDetail campaign={selected} onRefresh={refreshSelected} />
         <LessonsRail lessons={lessons} />
       </div>
